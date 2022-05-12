@@ -133,6 +133,7 @@ p <- p + geom_line(aes(x=t, y=mu_t_median), size = 0.75) + geom_ribbon(data = ch
 p
 ################################################################################
 # Preparing the data
+df <- df %>% filter(DOY < 200)
 X <- df[,c(1,4,5)]
 DOY <- X$DOY
 EVI <- X$EVI
@@ -146,14 +147,15 @@ M3_str <- textConnection("model{
     # Likelihoods
     for(i in 1:n) {
       EVI[i] ~ dnorm(mu[i], tau[year[i]])
-      mu[i] = exp(-(1/gamma[year[i]])*(DOY[i]-delta[year[i]])^2)
+      mu[i] = 0.2 + beta[year[i]]*exp(-(1/gamma[year[i]])*(DOY[i]-delta[year[i]])^2)
     }
     
     for(j in 1:m) {
-      delta[j] ~ dunif(sqrt(gamma[j]*log(2)), 365 + sqrt(gamma[j]*log(2)))
+      delta[j] ~ dunif(sqrt(-gamma[j]*log(0.3/beta[j])), 365 + sqrt(-gamma[j]*log(0.3/beta[j])))
+      beta[j] ~ dunif(0.3, 0.8)
       gamma[j] ~ dgamma(0.1, 0.1)
       tau[j] ~ dgamma(0.1, 0.1)
-      gut[j] <- delta[j]-sqrt(gamma[j]*log(2))
+      gut[j] <- delta[j]-sqrt(-gamma[j]*log(0.3/beta[j]))
     }
     
   }")
@@ -161,13 +163,28 @@ M3_str <- textConnection("model{
 # Model compilation
 #init3 <- list(gamma = 5000)
 M3 <- jags.model(M3_str, data = data3, n.chains = 1, quiet = TRUE)
-update(M3, 40000, progress.bar = 'none')
+update(M3, 100000, progress.bar = 'none')
 samples <- coda.samples(M3, 
                         variable.names = c('gut'), 
-                        n.iter = 40000, progress.bar = 'none')  
+                        n.iter = 10000, progress.bar = 'none')  
 gut_sum <- as.data.frame(summary(samples)$quantiles)
 gut_sum <- cbind(gut_sum, unique(X$Year))
 colnames(gut_sum) <- c('q025', 'q25', 'q50', 'q75', 'q975', 'year')
+
+samples2 <- coda.samples(M3, 
+                        variable.names = c('mu'), 
+                        n.iter = 10000, progress.bar = 'none')
+# Uncertainty Quantification of Mu by Day
+sum2 <- summary(samples2[[1]])
+quants <- sum2$quantiles
+mu_t_025 <- quants[,1]
+mu_t_median <- quants[,3]
+mu_t_975 <- quants[,5]
+df$date <- as.Date(df$date)
+check <- data.frame(t=t[1:n], mu_t_025, mu_t_median, mu_t_975, Y=Y[1:n])
+p <- ggplot(data = check) + geom_point(aes(x=t, y=Y), color = 'black', alpha = 0.5) + labs(x='Days since 06/10/1984', y='EVI')
+p <- p + geom_line(aes(x=t, y=mu_t_median), size = 0.75) + geom_ribbon(data = check, aes(x=t, ymin = mu_t_025,ymax = mu_t_975), fill = 'steelblue', alpha = 0.5)
+p
 
 gut_plot <- ggplot(gut_sum, aes(year)) + 
   geom_line(aes(y=q50, color = 'Posterior Median'), size = 1.25) + 
