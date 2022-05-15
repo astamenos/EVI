@@ -133,7 +133,7 @@ p <- p + geom_line(aes(x=t, y=mu_t_median), size = 0.75) + geom_ribbon(data = ch
 p
 ################################################################################
 # Preparing the data
-df <- df %>% filter(DOY < 200)
+df <- df %>% filter(DOY < 218)
 X <- df[,c(1,4,5)]
 DOY <- X$DOY
 EVI <- X$EVI
@@ -160,10 +160,29 @@ M3_str <- textConnection("model{
     
   }")
 
+M3_str <- textConnection("model{
+    # Likelihoods
+    for(i in 1:n) {
+      EVI[i] ~ dnorm(mu[i], tau[year[i]])
+      mu[i] = alpha[year[i]]/(1 + exp(-gamma[year[i]]*(DOY[i]-delta[year[i]])))
+    }
+    
+    for(j in 1:m) {
+      alpha[j] ~ dunif(0.50, 1)
+      gamma[j] ~ dbeta(1, 10)
+      delta[j] ~ dunif(0 + (1/gamma[j])*log(2*alpha[j]-1), 365 + (1/gamma[j])*log(2*alpha[j]-1))
+      tau[j] ~ dgamma(0.1, 0.1)
+      gut[j] <- delta[j]-(1/gamma[j])*log(2*alpha[j]-1)
+    }
+    
+  }")
+
+
+
 # Model compilation
 #init3 <- list(gamma = 5000)
 M3 <- jags.model(M3_str, data = data3, n.chains = 1, quiet = TRUE)
-update(M3, 100000, progress.bar = 'none')
+update(M3, 70000, progress.bar = 'none')
 samples <- coda.samples(M3, 
                         variable.names = c('gut'), 
                         n.iter = 10000, progress.bar = 'none')  
