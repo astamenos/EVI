@@ -147,15 +147,16 @@ M3_str <- textConnection("model{
     # Likelihoods
     for(i in 1:n) {
       EVI[i] ~ dnorm(mu[i], tau[year[i]])
-      mu[i] = 0.2 + beta[year[i]]*exp(-(1/gamma[year[i]])*(DOY[i]-delta[year[i]])^2)
+      mu[i] = alpha[year[i]] + beta[year[i]]*exp(-(1/gamma[year[i]])*(DOY[i]-delta[year[i]])^2)
     }
     
     for(j in 1:m) {
-      delta[j] ~ dunif(sqrt(-gamma[j]*log(0.3/beta[j])), 365 + sqrt(-gamma[j]*log(0.3/beta[j])))
-      beta[j] ~ dunif(0.3, 0.8)
-      gamma[j] ~ dgamma(0.1, 0.1)
-      tau[j] ~ dgamma(0.1, 0.1)
-      gut[j] <- delta[j]-sqrt(-gamma[j]*log(0.3/beta[j]))
+      delta[j] ~ dunif(sqrt(-gamma[j]*log((0.5-alpha[j])/beta[j])), 365 + sqrt(-gamma[j]*log((0.5-alpha[j])/beta[j])))
+      beta[j] ~ dunif(0.5, 1 - alpha[j])
+      alpha[j] ~ dunif(0, 0.5)
+      gamma[j] ~ dgamma(3.6, 0.0001)
+      tau[j] ~ dgamma(0.01, 0.01)
+      gut[j] <- delta[j]-sqrt(-gamma[j]*log((0.5-alpha[j])/beta[j]))
     }
     
   }")
@@ -182,13 +183,14 @@ M3_str <- textConnection("model{
 # Model compilation
 #init3 <- list(gamma = 5000)
 M3 <- jags.model(M3_str, data = data3, n.chains = 1, quiet = TRUE)
-update(M3, 70000, progress.bar = 'none')
+update(M3, 30000, progress.bar = 'none')
 samples <- coda.samples(M3, 
                         variable.names = c('gut'), 
                         n.iter = 10000, progress.bar = 'none')  
 gut_sum <- as.data.frame(summary(samples)$quantiles)
 gut_sum <- cbind(gut_sum, unique(X$Year))
 colnames(gut_sum) <- c('q025', 'q25', 'q50', 'q75', 'q975', 'year')
+
 
 samples2 <- coda.samples(M3, 
                         variable.names = c('mu'), 
